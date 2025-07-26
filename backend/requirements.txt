@@ -1,14 +1,11 @@
-backend/requirements.txt
 fastapi
 uvicorn[standard]
 python-dotenv
-langchain # Core LangChain library
-langchain-google-genai # For Gemini LLM and Embeddings
-langchain-community # For document loaders and other community integrations
-chromadb # Vector database
-pydantic # For FastAPI data validation
-
-For file format support:
-pypdf # For PDF loading
-unstructured[all] # For DOCX, HTML, etc. (install with [all] for broader support)
-python-docx # For DOCX loading (often pulled by unstructured, but good to be explicit)
+langchain
+langchain-google-genai
+langchain-community
+chromadb
+pydantic
+pypdf
+unstructured[all]
+python-docx
