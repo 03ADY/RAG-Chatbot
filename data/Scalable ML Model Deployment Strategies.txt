@@ -1,0 +1,17 @@
+Scalable ML Model Deployment Strategies
+
+Deploying Machine Learning (ML) models into production environments requires robust and scalable strategies to handle varying loads, ensure high availability, and maintain performance. Unlike traditional software, ML models introduce unique challenges related to data dependencies, model drift, and computational demands.
+
+Common deployment patterns include:
+
+Batch Prediction: For scenarios where predictions are not needed in real-time. Data is processed in batches (e.g., nightly), and predictions are stored for later use. This is efficient for large volumes of data but has higher latency.
+
+Real-time/Online Prediction: Models are deployed as API endpoints (e.g., microservices) that receive individual requests and return predictions instantly. This requires low-latency infrastructure, auto-scaling capabilities, and robust monitoring. Technologies like FastAPI, Flask, or even specialized ML serving frameworks (e.g., TensorFlow Serving, TorchServe) are common.
+
+Edge/On-device Deployment: Deploying models directly onto devices (e.g., mobile phones, IoT devices) for offline inference, low latency, and reduced cloud costs. This requires optimized models (e.g., TensorFlow Lite, ONNX Runtime) and careful resource management.
+
+Containerization (Docker/Kubernetes): Packaging models and their dependencies into portable containers (Docker) simplifies deployment across different environments. Orchestrating these containers with Kubernetes provides automated scaling, load balancing, and self-healing capabilities, crucial for high-traffic ML services.
+
+Serverless Functions: Deploying models as serverless functions (e.g., AWS Lambda, Azure Functions, Google Cloud Functions) allows for automatic scaling and pay-per-execution billing, ideal for intermittent or unpredictable inference loads.
+
+Key considerations for scalable deployment include: model versioning, A/B testing or canary deployments for new model versions, robust monitoring for performance and data/concept drift, and efficient resource utilization (CPU/GPU).

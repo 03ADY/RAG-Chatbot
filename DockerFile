@@ -1,0 +1,52 @@
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim-buster
+
+# Set the working directory in the container to /app
+# All subsequent commands will run from /app inside the container
+WORKDIR /app
+
+# Copy the backend requirements file from the host's backend/ directory
+# to the /app directory in the container.
+COPY backend/requirements.txt .
+
+# Install any needed packages specified in requirements.txt
+# --no-cache-dir: Don't store cache, reduces image size
+# --upgrade pip: Ensures pip is up-to-date
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copy the entire backend application code from the host's backend/ directory
+# to the /app directory in the container.
+COPY backend/. .
+
+# Copy the data directory from the host's data/ directory
+# to the /app/data directory in the container.
+# This ensures your knowledge base is available inside the container.
+COPY data /app/data
+
+# Expose the port that Uvicorn will listen on
+# This needs to match the port specified in your uvicorn command (8000)
+EXPOSE 8000
+
+# Define the command to run the application
+# main:app refers to the 'app' object in 'main.py'
+# --host 0.0.0.0: Makes the server accessible from outside the container
+# --port 8000: Specifies the port
+# --workers 1: For simplicity, we start with 1 worker. Adjust for production.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+# Notes for deployment:
+# 1. Build the Docker image (run from rag_chatbot_project/ root):
+#    docker build -t rag-chatbot-backend .
+#
+# 2. Run the Docker container (for local testing):
+#    docker run -p 8000:8000 --env GOOGLE_API_KEY="YOUR_GEMINI_API_KEY_HERE" rag-chatbot-backend
+#    (Replace YOUR_GEMINI_API_KEY_HERE with your actual key)
+#
+# 3. For cloud deployment (e.g., Google Cloud Run, AWS ECS, Render):
+#    - You'll typically push this image to a container registry (e.g., Docker Hub, GCR, ECR).
+#    - When deploying, you'll pass the GOOGLE_API_KEY as an environment variable to the container.
+#    - The `data/` directory: For production, you'd usually mount a persistent volume to /app/data
+#      or use a cloud-managed vector store (like Pinecone, Weaviate, or a managed Chroma service)
+#      instead of the local `chroma_db_persistent` directory to ensure data persistence across container restarts.
+#      For this demo, ChromaDB will re-index from the copied `data/` files on each container start.

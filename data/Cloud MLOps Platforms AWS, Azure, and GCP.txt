@@ -1,0 +1,29 @@
+Cloud MLOps Platforms: AWS, Azure, and GCP
+
+Major cloud providers offer comprehensive platforms designed to streamline Machine Learning Operations (MLOps), enabling organizations to build, train, deploy, and manage ML models at scale. These platforms abstract away much of the infrastructure complexity, providing integrated tools and services.
+
+Amazon Web Services (AWS) - SageMaker:
+
+Features: End-to-end ML platform. Includes SageMaker Studio (IDE), SageMaker Experiments (tracking), SageMaker Pipelines (CI/CD), SageMaker Feature Store (data management), SageMaker Model Monitor (drift detection), and various deployment options (endpoints, batch transform).
+
+Strengths: Deep integration with other AWS services, extensive feature set, highly scalable.
+
+Use Cases: Large enterprises already on AWS, those needing fine-grained control and a wide array of specialized ML services.
+
+Microsoft Azure - Azure Machine Learning:
+
+Features: Unified platform for ML lifecycle. Offers Azure ML Studio (web portal), MLOps capabilities (pipelines, model registry, monitoring), automated ML (AutoML), and integration with Azure DevOps for CI/CD. Supports various compute targets.
+
+Strengths: Strong integration with Microsoft ecosystem, good for hybrid cloud scenarios, user-friendly interface for data scientists.
+
+Use Cases: Enterprises heavily invested in Microsoft technologies, those seeking a managed ML service with strong MLOps features.
+
+Google Cloud Platform (GCP) - Vertex AI:
+
+Features: Unified ML platform bringing together various Google Cloud ML services. Includes Workbench (Jupyter notebooks), Pipelines (orchestration), Feature Store, Model Monitoring, and robust deployment options (endpoints, batch prediction). Strong emphasis on MLOps and responsible AI.
+
+Strengths: Cutting-edge AI/ML research integration, strong MLOps focus, excellent for deep learning and custom model development, good for data science teams.
+
+Use Cases: Organizations prioritizing advanced AI capabilities, those already on GCP, or those needing highly customizable ML workflows.
+
+All three platforms aim to reduce the friction of moving ML models from experimentation to production, providing tools for data management, model training, versioning, deployment, monitoring, and governance, which are central to MLOps.
