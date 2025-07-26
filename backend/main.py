@@ -56,6 +56,7 @@ origins = [
     "http://127.0.0.1:8000",
     "http://localhost:5500", # VS Code Live Server
     "http://127.0.0.1:5500",
+    "https://aura-rag-chatbot.vercel.app",
     "https://rag-chatbot-ejuh.onrender.com", # Your deployed backend URL
     "null" # For local file:// access
     # Add your frontend's deployed URL here (e.g., "https://your-frontend-domain.com")
