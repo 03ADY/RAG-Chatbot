@@ -50,10 +50,11 @@ origins = [
     "http://127.0.0.1",
     "http://127.0.0.1:8000",
     "http://localhost:5500", # VS Code Live Server
-    "http://127.00.1:5500",
+    "http://127.0.0.1:5500", # Corrected typo here (127.0.0.1)
+    "https://rag-chatbot-ejuh.onrender.com", # Your deployed backend URL (good to include explicitly if you deploy frontend there later)
+    "null" # <--- ADD THIS LINE FOR LOCAL FILE ACCESS
     # Add your frontend's deployed URL here (e.g., "https://your-frontend-domain.com")
 ]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
