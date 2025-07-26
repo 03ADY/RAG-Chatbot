@@ -170,7 +170,7 @@ def initialize_rag_components():
         logger.info("Vector store created/loaded.")
 
         # 4. Initialize Conversational Memory
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
         logger.info("Conversation memory initialized.")
 
         # 5. Create Conversational Retrieval Chain (the heart of RAG)
