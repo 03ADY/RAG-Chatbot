@@ -92,7 +92,7 @@ def initialize_rag_components():
     try:
         # 1. Initialize LLM (Gemini Pro)
         if GOOGLE_API_KEY:
-            llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GOOGLE_API_KEY, temperature=0.1)
+            llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GOOGLE_API_KEY, temperature=0.1)
             logger.info("Gemini Pro LLM initialized.")
         else:
             logger.warning("Google API Key not set. LLM will not be initialized.")
