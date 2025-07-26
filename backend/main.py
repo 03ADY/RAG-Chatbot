@@ -4,11 +4,12 @@
 import os
 import logging
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import shutil # For saving uploaded files
+import mimetypes # For checking file types
 
 # LangChain components
 from langchain_community.document_loaders import TextLoader, PyPDFLoader, UnstructuredWordDocumentLoader, CSVLoader, DirectoryLoader
@@ -37,6 +38,10 @@ if not GOOGLE_API_KEY:
 DATA_DIR = "../data"
 CHROMA_DB_DIR = "./chroma_db_persistent"
 
+# File upload limits and allowed types
+MAX_FILE_SIZE_MB = 10 # Max file size for upload
+ALLOWED_EXTENSIONS = {".txt", ".pdf", ".docx", ".csv"}
+
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="LangChain RAG Chatbot Backend",
@@ -50,11 +55,12 @@ origins = [
     "http://127.0.0.1",
     "http://127.0.0.1:8000",
     "http://localhost:5500", # VS Code Live Server
-    "http://127.0.0.1:5500", # Corrected typo here (127.0.0.1)
-    "https://rag-chatbot-ejuh.onrender.com", # Your deployed backend URL (good to include explicitly if you deploy frontend there later)
-    "null" # <--- ADD THIS LINE FOR LOCAL FILE ACCESS
+    "http://127.0.0.1:5500",
+    "https://rag-chatbot-ejuh.onrender.com", # Your deployed backend URL
+    "null" # For local file:// access
     # Add your frontend's deployed URL here (e.g., "https://your-frontend-domain.com")
 ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -93,7 +99,7 @@ def initialize_rag_components():
         # 1. Initialize LLM (Gemini Pro)
         if GOOGLE_API_KEY:
             llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GOOGLE_API_KEY, temperature=0.1)
-            logger.info("Gemini Pro LLM initialized.")
+            logger.info("Gemini 1.5 Flash LLM initialized.")
         else:
             logger.warning("Google API Key not set. LLM will not be initialized.")
             llm = None
@@ -117,15 +123,6 @@ def initialize_rag_components():
             logger.info(f"Created data directory: {DATA_DIR}")
 
         # Use DirectoryLoader to load documents of various types
-        # This will iterate through DATA_DIR and use appropriate loaders
-        loader_kwargs = {
-            "loader_cls": FILE_LOADER_MAP.get(".txt"), # Default loader if not specified
-            "loader_kwargs": {},
-            "glob": "**/*", # Load all files recursively
-            "silent_errors": True # Don't crash on unreadable files
-        }
-        
-        # Manually iterate and load to use specific loaders for each extension
         loaded_count = 0
         for root, _, files in os.walk(DATA_DIR):
             for filename in files:
@@ -148,26 +145,27 @@ def initialize_rag_components():
         if not documents:
             logger.warning("No valid documents loaded. Creating a dummy document for initial setup.")
             dummy_content = "This is a dummy document. For the chatbot to provide specific answers, please add your actual files (e.g., .txt, .pdf, .docx, .csv) to the 'data' directory. After adding files, trigger a re-index or restart the backend server."
-            documents.append({"page_content": dummy_content, "metadata": {"source": "dummy_doc.txt"}})
-            # Note: For dummy, we don't save to disk to avoid clutter.
-
-        # Split documents into smaller, overlapping chunks for better retrieval.
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        splits = text_splitter.split_documents(documents)
-        logger.info(f"Split {len(documents)} documents into {len(splits)} chunks.")
-
-        # Create or load the Chroma vector store.
-        # If `CHROMA_DB_DIR` contains existing data, Chroma will load it.
-        # Otherwise, it will create a new one from `splits`.
-        if os.path.exists(CHROMA_DB_DIR) and os.listdir(CHROMA_DB_DIR):
-            logger.info(f"Loading existing vector store from '{CHROMA_DB_DIR}'.")
-            vectorstore = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings_model)
+            # LangChain's from_texts expects a list of strings, not Document objects for dummy.
+            splits = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200).split_text(dummy_content)
+            vectorstore = Chroma.from_texts(splits, embeddings_model, persist_directory=CHROMA_DB_DIR)
+            vectorstore.persist()
+            logger.info("Created dummy vector store after empty load.")
         else:
-            logger.info(f"Creating new vector store and persisting to '{CHROMA_DB_DIR}'.")
-            vectorstore = Chroma.from_documents(splits, embeddings_model, persist_directory=CHROMA_DB_DIR)
-            vectorstore.persist() # Explicitly save the embeddings to disk
-        
-        logger.info("Vector store created/loaded.")
+            # Split documents into smaller, overlapping chunks for better retrieval.
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            splits = text_splitter.split_documents(documents)
+            logger.info(f"Split {len(documents)} documents into {len(splits)} chunks.")
+
+            # Create or load the Chroma vector store.
+            if os.path.exists(CHROMA_DB_DIR) and os.listdir(CHROMA_DB_DIR):
+                logger.info(f"Loading existing vector store from '{CHROMA_DB_DIR}'.")
+                vectorstore = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings_model)
+            else:
+                logger.info(f"Creating new vector store and persisting to '{CHROMA_DB_DIR}'.")
+                vectorstore = Chroma.from_documents(splits, embeddings_model, persist_directory=CHROMA_DB_DIR)
+                vectorstore.persist() # Explicitly save the embeddings to disk
+            
+            logger.info("Vector store created/loaded.")
 
         # 4. Initialize Conversational Memory
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
@@ -215,6 +213,13 @@ class ReindexResponse(BaseModel):
     message: str
     documents_indexed: int
 
+class UploadResponse(BaseModel):
+    """Response model for file upload endpoint."""
+    status: str
+    message: str
+    filename: str
+    file_size_bytes: int
+
 # --- API Endpoints ---
 
 @app.on_event("startup")
@@ -235,7 +240,7 @@ async def chat_endpoint(chat_message: ChatMessage):
     and associated source documents.
     """
     if not conversation_chain:
-        raise HTTPException(status_code=503, detail="AI services are not initialized. Please check backend logs.")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="AI services are not initialized. Please check backend logs.")
 
     try:
         logger.info(f"Received chat message for session {chat_message.session_id}: '{chat_message.message}'")
@@ -250,7 +255,11 @@ async def chat_endpoint(chat_message: ChatMessage):
         for doc in source_documents:
             # Extract relevant info from source document metadata
             # The 'source' metadata key typically holds the file path.
-            doc_title = os.path.basename(doc.metadata.get('source', 'Unknown Source')).replace('.txt', '').replace('.pdf', '').replace('.docx', '').replace('.csv', '')
+            doc_title = os.path.basename(doc.metadata.get('source', 'Unknown Source'))
+            # Clean up common file extensions for display
+            for ext in FILE_LOADER_MAP.keys():
+                doc_title = doc_title.replace(ext, '')
+            
             sources_list.append(SourceDocument(
                 content_snippet=doc.page_content[:200] + "...", # Provide a snippet of the content
                 metadata=doc.metadata, # Include full metadata for debugging/detail
@@ -261,7 +270,65 @@ async def chat_endpoint(chat_message: ChatMessage):
     except Exception as e:
         logger.error(f"Error in chat endpoint for session {chat_message.session_id}: {e}", exc_info=True)
         # Raise an HTTPException to send a proper error response to the frontend
-        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {e}")
+
+@app.post("/upload_document", response_model=UploadResponse)
+async def upload_document_endpoint(file: UploadFile = File(...)):
+    """
+    Handles document uploads to the data directory and triggers re-indexing.
+    """
+    logger.info(f"Received upload request for file: {file.filename}")
+    
+    file_extension = os.path.splitext(file.filename)[1].lower()
+
+    # 1. Validate file extension
+    if file_extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {file_extension}. Allowed types are: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+    
+    # 2. Validate file size
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0) # Reset file cursor to the beginning
+    
+    if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large. Max size is {MAX_FILE_SIZE_MB}MB."
+        )
+
+    # Ensure DATA_DIR exists
+    os.makedirs(DATA_DIR, exist_ok=True)
+    
+    file_path = os.path.join(DATA_DIR, file.filename)
+    
+    # 3. Save the file
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logger.info(f"File '{file.filename}' saved to {file_path}")
+    except Exception as e:
+        logger.error(f"Error saving file '{file.filename}': {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save file: {e}")
+
+    # 4. Trigger re-indexing of the knowledge base
+    try:
+        reindex_response = await reindex_kb_endpoint()
+        if reindex_response.status != "success":
+            raise Exception(f"Re-indexing failed: {reindex_response.message}")
+        logger.info(f"File '{file.filename}' uploaded and KB re-indexed successfully.")
+        return UploadResponse(
+            status="success",
+            message=f"File '{file.filename}' uploaded and knowledge base re-indexed successfully!",
+            filename=file.filename,
+            file_size_bytes=file_size
+        )
+    except Exception as e:
+        logger.error(f"Error triggering re-index after upload for '{file.filename}': {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"File uploaded, but re-indexing failed: {e}")
+
 
 @app.post("/reindex_kb", response_model=ReindexResponse)
 async def reindex_kb_endpoint():
@@ -270,7 +337,7 @@ async def reindex_kb_endpoint():
     This will delete the old ChromaDB and create a new one.
     """
     logger.info("Re-indexing knowledge base requested.")
-    global vectorstore # Need to modify the global vectorstore instance
+    global vectorstore, conversation_chain, memory # Need to modify global instances
 
     try:
         # Clear existing ChromaDB persistent directory
@@ -278,7 +345,7 @@ async def reindex_kb_endpoint():
             shutil.rmtree(CHROMA_DB_DIR)
             logger.info(f"Removed old ChromaDB directory: {CHROMA_DB_DIR}")
         
-        # Re-initialize only the vector store part
+        # Re-initialize the vector store part
         documents = []
         loaded_count = 0
         for root, _, files in os.walk(DATA_DIR):
@@ -317,10 +384,7 @@ async def reindex_kb_endpoint():
         logger.info("Knowledge base re-indexed and persisted successfully.")
         
         # Reset memory for current conversation chain if needed, or create a new chain
-        # For simplicity, we'll just rely on the existing chain picking up new retriever
-        # A more robust solution might recreate the chain or manage memory per session.
-        global conversation_chain, memory
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
         conversation_chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
             retriever=vectorstore.as_retriever(),
@@ -328,13 +392,13 @@ async def reindex_kb_endpoint():
             return_source_documents=True,
             verbose=False
         )
-        logger.info("Conversation chain re-linked to new vector store.")
+        logger.info("Conversation chain re-linked to new vector store and memory reset.")
 
 
         return ReindexResponse(status="success", message="Knowledge base re-indexed successfully!", documents_indexed=loaded_count)
     except Exception as e:
         logger.error(f"Error during knowledge base re-indexing: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to re-index knowledge base: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to re-index knowledge base: {e}")
 
 
 @app.get("/health")
