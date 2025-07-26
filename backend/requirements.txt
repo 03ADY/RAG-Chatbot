@@ -9,3 +9,4 @@ pydantic
 pypdf
 unstructured[all]
 python-docx
+python-multipart 
